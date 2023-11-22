@@ -1,6 +1,4 @@
 
-
-
 # creation of Resource Group
 data "azurerm_client_config" "current" {}
 
@@ -137,7 +135,7 @@ resource "azurerm_key_vault_access_policy" "server1" {
 # Creation Of key in the keyvault.
 
 resource "azurerm_key_vault_key" "generated" {
-  name         = "generatedcertificate1112"
+  name         = "generatedcertificate111"
   key_vault_id = azurerm_key_vault.brilliokv.id
   key_type     = "RSA"
   key_size     = 2048
@@ -163,7 +161,7 @@ resource "azurerm_key_vault_key" "generated" {
 }
 
 resource "azurerm_key_vault_key" "generated1" {
-  name         = "generatedcertificate2224"
+  name         = "generatedcertificate222"
   key_vault_id = azurerm_key_vault.brilliokv1.id
   key_type     = "RSA"
   key_size     = 2048
@@ -249,6 +247,49 @@ resource "azurerm_postgresql_flexible_server" "primaryserver" {
   azurerm_virtual_network_peering.peering2-1]
 } 
 
+# creation of Eventhub namespace.
+resource "azurerm_eventhub_namespace" "postgresehn" {
+  name                = "mypostgresflex-EHN"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  sku                 = "Standard"
+  capacity            = 2
+  depends_on = [ azurerm_postgresql_flexible_server.primaryserver ]
+}
+# creation of evethub in the eventhub namespace.
+resource "azurerm_eventhub" "postgresEH" {
+  name                = "mypostgresflex-EH"
+  namespace_name      = azurerm_eventhub_namespace.postgresehn.name
+  resource_group_name = azurerm_resource_group.rg.name
+  partition_count     = 2
+  message_retention   = 1
+  depends_on = [ azurerm_eventhub_namespace.postgresehn ]
+}
+# creation of authorization rules in eventhub namespace.
+resource "azurerm_eventhub_namespace_authorization_rule" "exampleEH" {
+  name                = "mypostgresflex-EHRule"
+  namespace_name      = azurerm_eventhub_namespace.postgresehn.name
+  resource_group_name = azurerm_resource_group.rg.name
+  listen              = true
+  send                = true
+  manage              = true
+  depends_on = [ azurerm_eventhub.postgresEH ]
+}
+
+# Configuring the diagnostics settings in the postgres primary server
+
+resource "azurerm_monitor_diagnostic_setting" "example-ds" {
+  name               = "postgres-ds"
+  target_resource_id = azurerm_postgresql_flexible_server.primaryserver.id
+  eventhub_authorization_rule_id = azurerm_eventhub_namespace_authorization_rule.exampleEH.id
+  eventhub_name                  = azurerm_eventhub.postgresEH.name
+  
+  metric {
+    category = "AllMetrics"
+  }
+  depends_on = [ azurerm_eventhub_namespace_authorization_rule.exampleEH ]
+}
+
 resource "azurerm_postgresql_flexible_server" "replica" {
   name                   = "brilliopsqlflexibleserverreplica112"
   resource_group_name    = azurerm_resource_group.rg.name
@@ -274,11 +315,12 @@ resource "azurerm_postgresql_flexible_server" "replica" {
   
 }
 
-resource "null_resource" "example1" {
+/*
+resource "null_resource" "exp" {
 
   provisioner "local-exec" {
     
-    command = "az postgres server replica stop  -g briliorg12345 -n brilliopsqlflexibleserverreplica112 --yes"
+    command = "az postgres server replica stop -g briliorg12345 -n brilliopsqlflexibleserverreplica112 -y"
 
   }
 
@@ -286,126 +328,72 @@ resource "null_resource" "example1" {
 
 
 
-resource "azurerm_virtual_network" "vnet2" {
-  name                = "brilliovnet333"
-  location            = "West US"
-  resource_group_name = azurerm_resource_group.rg.name
-  address_space       = ["155.0.0.0/16"]
-}
-# Creation of Subnet for the postgres server.
 
-resource "azurerm_subnet" "subnet3" {
-  name                 = "brilliosubnet333"
-  resource_group_name  = azurerm_resource_group.rg.name
-  virtual_network_name = azurerm_virtual_network.vnet2.name
-  address_prefixes     = ["155.0.0.0/24"]
-  service_endpoints    = ["Microsoft.Storage"]
-  delegation {
-    name = "fs"
-    service_delegation {
-      name = "Microsoft.DBforPostgreSQL/flexibleServers"
-      actions = [
-        "Microsoft.Network/virtualNetworks/subnets/join/action",
-      ]
-    }
-  }
-  depends_on = [ azurerm_virtual_network.vnet2 ]
-}
 
-resource "azurerm_virtual_network_peering" "peering2-3" {
-  name                      = "peer2to3"
-  resource_group_name       = azurerm_resource_group.rg.name
-  virtual_network_name      = azurerm_virtual_network.vnet1.name
-  remote_virtual_network_id = azurerm_virtual_network.vnet2.id
-  depends_on = [ azurerm_virtual_network.vnet1,azurerm_virtual_network.vnet2]
-}
-
-resource "azurerm_virtual_network_peering" "peering3-2" {
-  name                      = "peer3to2"
-  resource_group_name       = azurerm_resource_group.rg.name
-  virtual_network_name      = azurerm_virtual_network.vnet2.name
-  remote_virtual_network_id = azurerm_virtual_network.vnet1.id
-  depends_on = [ azurerm_virtual_network.vnet1,azurerm_virtual_network.vnet2]
-}
-
-resource "azurerm_user_assigned_identity" "userassignedid2" {
-  location            = "WestUS"
-  name                = "brilliomi333"
-  resource_group_name = azurerm_resource_group.rg.name
-  depends_on = [ azurerm_resource_group.rg ]
-}
-
-# Creation of keyvault With Key permissions
-
-resource "azurerm_key_vault" "brilliokv2" {
-  name                       = "brilliokv333"
-  location                   = "WestUS"
-  resource_group_name        = azurerm_resource_group.rg.name
-  tenant_id                  = data.azurerm_client_config.current.tenant_id
-  sku_name                   = "premium"
-  soft_delete_retention_days = 7
-  purge_protection_enabled = true
-  depends_on = [ azurerm_resource_group.rg ]
-}
-resource "azurerm_key_vault_access_policy" "server3" {
-  key_vault_id = azurerm_key_vault.brilliokv2.id
-  tenant_id    = data.azurerm_client_config.current.tenant_id
-  object_id    = azurerm_user_assigned_identity.userassignedid2.principal_id
-
-  key_permissions = ["Get", "List", "WrapKey", "UnwrapKey", "GetRotationPolicy", "SetRotationPolicy"]
-  depends_on = [ azurerm_key_vault.brilliokv2 ]
-}
-
-resource "azurerm_key_vault_key" "generated2" {
-  name         = "generatedcertificate333"
-  key_vault_id = azurerm_key_vault.brilliokv2.id
-  key_type     = "RSA"
-  key_size     = 2048
-
-  key_opts = [
-    "decrypt",
-    "encrypt",
-    "sign",
-    "unwrapKey",
-    "verify",
-    "wrapKey",
-  ]
-
-  rotation_policy {
-    automatic {
-      time_before_expiry = "P30D"
-    }
-
-    expire_after         = "P90D"
-    notify_before_expiry = "P29D"
-  }
-  depends_on = [ azurerm_key_vault.brilliokv2 ]
-}
 
 resource "azurerm_postgresql_flexible_server" "replica2" {
   name                   = "brilliopsqlflexibleserverreplica333"
   resource_group_name    = azurerm_resource_group.rg.name
-  location               = "westUS"
+  location               = "EastUS2"
   version                = "15"
-  delegated_subnet_id    = azurerm_subnet.subnet3.id
+  delegated_subnet_id    = azurerm_subnet.subnet.id
   private_dns_zone_id    = azurerm_private_dns_zone.dnszone.id
   administrator_login    = "psqladmin"
   administrator_password = "H@Sh1CoR3!!!"
-  zone                   = "2"
+  zone                   = "3"
   create_mode            = "Replica"
   source_server_id       = azurerm_postgresql_flexible_server.replica.id
   storage_mb = 32768
     identity {
     type         = "UserAssigned"
-    identity_ids = [azurerm_user_assigned_identity.userassignedid2.id]  
+    identity_ids = [azurerm_user_assigned_identity.userassignedid.id]  
   }
   customer_managed_key {
-    key_vault_key_id                    = azurerm_key_vault_key.generated2.id
-    primary_user_assigned_identity_id   = azurerm_user_assigned_identity.userassignedid2.id
+    key_vault_key_id                    = azurerm_key_vault_key.generated.id
+    primary_user_assigned_identity_id   = azurerm_user_assigned_identity.userassignedid.id
   }
-  depends_on = [azurerm_key_vault.brilliokv2,azurerm_key_vault_access_policy.server3
-  ,azurerm_key_vault_key.generated2,azurerm_subnet.subnet3,azurerm_user_assigned_identity.userassignedid2
-  ,azurerm_virtual_network.vnet2,azurerm_virtual_network_peering.peering2-3,
-  azurerm_virtual_network_peering.peering3-2]
+  depends_on = []
   
 }
+*/
+
+
+/*
+resource "null_resource" "exp" {
+
+  provisioner "local-exec" {
+    
+    command = "az postgres server replica stop -g briliorg12345 -n brilliopsqlflexibleserverreplica112 -y"
+
+  }
+
+}
+
+
+
+
+resource "azurerm_postgresql_flexible_server" "replica3" {
+  name                   = "brilliopsqlflexibleserverreplica333"
+  resource_group_name    = azurerm_resource_group.rg.name
+  location               = "CentralUS"
+  version                = "15"
+  delegated_subnet_id    = azurerm_subnet.subnet1.id
+  private_dns_zone_id    = azurerm_private_dns_zone.dnszone.id
+  administrator_login    = "psqladmin"
+  administrator_password = "H@Sh1CoR3!!!"
+  zone                   = "2"
+  create_mode            = "Replica"
+  source_server_id       = azurerm_postgresql_flexible_server.replica2.id
+  storage_mb = 32768
+    identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.userassignedid1.id]  
+  }
+  customer_managed_key {
+    key_vault_key_id                    = azurerm_key_vault_key.generated1.id
+    primary_user_assigned_identity_id   = azurerm_user_assigned_identity.userassignedid1.id
+  }
+  
+}
+
+*/
