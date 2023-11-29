@@ -240,67 +240,9 @@ resource "azurerm_postgresql_flexible_server" "primaryserver" {
   azurerm_virtual_network_peering.peering2-1]
 } 
 
-# creation of Eventhub namespace.
-resource "azurerm_eventhub_namespace" "postgresehn" {
-  name                = "mypostgresflex-EHN12"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
-  sku                 = "Standard"
-  capacity            = 2
-  depends_on = [ azurerm_postgresql_flexible_server.primaryserver ]
-}
 
-# creation of evethub in the eventhub namespace.
-resource "azurerm_eventhub" "postgresEH" {
-  name                = "mypostgresflex-EH12"
-  namespace_name      = azurerm_eventhub_namespace.postgresehn.name
-  resource_group_name = azurerm_resource_group.rg.name
-  partition_count     = 2
-  message_retention   = 1
-  depends_on = [ azurerm_eventhub_namespace.postgresehn ]
-}
 
-# creation of authorization rules in eventhub namespace.
-resource "azurerm_eventhub_namespace_authorization_rule" "exampleEH" {
-  name                = "mypostgresflex-EHRule12"
-  namespace_name      = azurerm_eventhub_namespace.postgresehn.name
-  resource_group_name = azurerm_resource_group.rg.name
-  listen              = true
-  send                = true
-  manage              = true
-  depends_on = [ azurerm_eventhub.postgresEH ]
-}
 
-# creation of Eventhub namespace in other region
-resource "azurerm_eventhub_namespace" "postgresehn1" {
-  name                = "mypostgresflex-EHN123"
-  location            = "centralus"
-  resource_group_name = azurerm_resource_group.rg.name
-  sku                 = "Standard"
-  capacity            = 2
-  depends_on = [ azurerm_postgresql_flexible_server.primaryserver ]
-}
-
-resource "azurerm_eventhub_namespace_disaster_recovery_config" "example" {
-  name                 = "replicate-eventhub3"
-  resource_group_name  = azurerm_resource_group.rg.name
-  namespace_name       = azurerm_eventhub_namespace.postgresehn.name
-  partner_namespace_id = azurerm_eventhub_namespace.postgresehn1.id
-}
-
-# Configuring the diagnostics settings in the postgres primary server
-
-resource "azurerm_monitor_diagnostic_setting" "example-ds" {
-  name               = "postgres-ds12"
-  target_resource_id = azurerm_postgresql_flexible_server.primaryserver.id
-  eventhub_authorization_rule_id = azurerm_eventhub_namespace_authorization_rule.exampleEH.id
-  eventhub_name                  = azurerm_eventhub.postgresEH.name
-  
-  metric {
-    category = "AllMetrics"
-  }
-  depends_on = [ azurerm_eventhub_namespace_authorization_rule.exampleEH ]
-}
 
 resource "azurerm_postgresql_flexible_server" "replica" {
   name                   = "brilliopsqlflexibleserverreplica2-eh"
@@ -327,27 +269,6 @@ resource "azurerm_postgresql_flexible_server" "replica" {
   depends_on = [azurerm_postgresql_flexible_server.primaryserver]
 }
 
-resource "azurerm_eventhub_namespace_authorization_rule" "exampleEH1" {
-  name                = "mypostgresflex-EHRule12"
-  namespace_name      = azurerm_eventhub_namespace.postgresehn1.name
-  resource_group_name = azurerm_resource_group.rg.name
-  listen              = true
-  send                = true
-  manage              = true
-}
-
-resource "azurerm_monitor_diagnostic_setting" "example-ds1" {
-  name               = "postgres-ds123"
-  target_resource_id = azurerm_postgresql_flexible_server.replica.id
-  eventhub_authorization_rule_id = azurerm_eventhub_namespace_authorization_rule.exampleEH1.id
-  eventhub_name = azurerm_eventhub.postgresEH.name
-  
-  metric {
-    category = "AllMetrics"
-  }
-}
-
-
 
 /*
 resource "null_resource" "exp" {
@@ -359,10 +280,10 @@ resource "null_resource" "exp" {
   }
 
 }
-*/
 
 
-/*
+
+
 
 
 resource "azurerm_postgresql_flexible_server" "replica2" {
@@ -371,7 +292,7 @@ resource "azurerm_postgresql_flexible_server" "replica2" {
   location               = "EastUS2"
   version                = "15"
   delegated_subnet_id    = azurerm_subnet.subnet.id
-  private_dns_zone_id    = azurerm_private_dns_zone.dnszone.id
+  private_dns_zone_id    = azurerm_private_dns_zone.dnszone.id 
   administrator_login    = "psqladmin"
   administrator_password = "H@Sh1CoR3!!!"
   zone                   = "3"
@@ -389,4 +310,5 @@ resource "azurerm_postgresql_flexible_server" "replica2" {
   depends_on = []
   
 }
-
+ */
+ 
